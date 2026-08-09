@@ -1,0 +1,25 @@
+{
+  "name": "mac-v1-game-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Minecraft AI Companion - Phase 1 Embodied Runtime starter",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "mineflayer": "4.37.1",
+    "mineflayer-pathfinder": "2.4.5",
+    "ws": "8.21.2"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/ws": "latest",
+    "tsx": "latest",
+    "typescript": "latest"
+  }
+}
+
+
+
