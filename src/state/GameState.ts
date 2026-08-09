@@ -10,6 +10,7 @@ export interface InventoryItemState {
   slot: number;
 }
 
+// 机器人状态
 export interface BotState {
   username: string;
   position: Vec3State;
@@ -30,6 +31,7 @@ export interface InventoryState {
   heldItem: string | null;
 }
 
+// skill执行状态
 export interface SkillExecutionState {
   executionId: string;
   skill: string;

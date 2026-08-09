@@ -23,6 +23,8 @@ export class SkillManager {
     return this.current ? { ...this.current } : null;
   }
 
+  // requestId:谁发送的命令
+  // executionId:执行的skill实例
   async execute(
     requestId: string,
     skillName: string,

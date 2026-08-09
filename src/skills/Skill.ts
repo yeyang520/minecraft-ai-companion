@@ -9,6 +9,8 @@ export type SkillStatus =
 export type SkillFailureReason =
   | "BOT_NOT_READY"
   | "PATH_NOT_FOUND"
+  | "PLAYER_NOT_FOUND"
+  | "TARGET_LOST"
   | "CANCELLED"
   | "TIMEOUT"
   | "UNKNOWN";
