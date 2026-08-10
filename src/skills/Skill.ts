@@ -15,9 +15,16 @@ export type SkillFailureReason =
   | "PATH_NOT_FOUND"
   | "PLAYER_NOT_FOUND"
   | "TARGET_LOST"
+  | "INVALID_ARGUMENT"
+  | "RESOURCE_NOT_FOUND"
+  | "TARGET_NOT_ACCESSIBLE"
+  | "BLOCK_NOT_DIGGABLE"
+  | "INVENTORY_FULL"
+  | "NO_PROGRESS"
   | "CANCELLED"
   | "TIMEOUT"
   | "UNKNOWN";
+
 
 // progress:执行进度
 // data:寻找方块信息
