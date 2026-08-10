@@ -1,9 +1,11 @@
+// 位置
 export interface Vec3State {
   x: number;
   y: number;
   z: number;
 }
 
+// 单个物品状态
 export interface InventoryItemState {
   name: string;
   count: number;
@@ -24,6 +26,7 @@ export interface BotState {
   isInWater: boolean;
 }
 
+// 物品状态
 export interface InventoryState {
   items: InventoryItemState[];
   counts: Record<string, number>;
@@ -39,6 +42,7 @@ export interface SkillExecutionState {
   startedAt: number;
 }
 
+// 游戏状态
 export interface GameState {
   timestamp: number;
   connected: boolean;

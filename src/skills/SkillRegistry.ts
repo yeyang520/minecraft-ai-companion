@@ -1,14 +1,16 @@
 import type { Skill } from "./Skill";
 import { GotoPositionSkill } from "./movement/GotoPositionSkill";
 import { GotoPlayerSkill } from "./movement/GotoPlayerSkill";
+import { FollowPlayerSkill } from "./movement/FollowPlayerSkill";
 
 export class SkillRegistry {
   private readonly skills = new Map<string, Skill<any>>();
 
-  // 注册已有skill
+  // 创建已有skill
   constructor() {
     this.register(new GotoPositionSkill());
     this.register(new GotoPlayerSkill());
+    this.register(new FollowPlayerSkill());
   }
 
   // 注册skill

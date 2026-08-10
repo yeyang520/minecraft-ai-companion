@@ -25,6 +25,8 @@ export class SkillManager {
 
   // requestId:谁发送的命令
   // executionId:执行的skill实例
+
+  // 执行skill
   async execute(
     requestId: string,
     skillName: string,
@@ -116,33 +118,95 @@ export class SkillManager {
     });
   }
 
+  // 撤销skill
   cancel(requestId: string): void {
-    if (!this.current || !this.controller) {
-      this.emit("skill.completed", {
-        requestId,
-        result: {
-          skill: "cancel",
-          status: "SUCCESS",
-          progress: {
-            cancelledExecution: false
+    if (
+      !this.current ||!this.controller
+    ) {
+      this.emit(
+        "skill.completed",
+        {
+          requestId,
+
+          result: {
+            skill: "cancel",
+            status: "SUCCESS",
+
+            progress: {
+              cancelledExecution: false
+            }
           }
         }
-      });
-      return;
+      );
+    return;
     }
 
-    const executionId = this.current.executionId;
-    this.current = {
-      ...this.current,
-      status: "CANCELLING"
-    };
+    const executionId =
+      this.current.executionId;
 
-    this.controller.abort();
+    // 调用底层stop逻辑
+    this.stop();
 
-    this.emit("skill.accepted", {
-      requestId,
+    this.emit(
+      "skill.accepted",
+      {
+        requestId,
+        executionId,
+        skill: "cancel"
+      }
+    );
+  }
+
+  // 强制停止
+  stop(): {
+    stopped: boolean;
+    executionId: string | null;
+    skill: string | null;
+  } {
+    const bot =
+    this.botManager.getBot();
+
+    const executionId =
+      this.current?.executionId ?? null;
+
+    const skill =
+      this.current?.skill ?? null;
+
+    // ==============================
+    // 1. 通知当前 Skill 中断
+    // ==============================
+
+    if (this.current) {
+      this.current = {
+        ...this.current,
+        status: "CANCELLING"
+      };
+    }
+
+    this.controller?.abort();
+
+    // ==============================
+    // 2. 强制停止身体
+    // ==============================
+
+    if (bot?.entity) {
+
+      bot.pathfinder.setGoal(null);
+
+      bot.clearControlStates();
+
+      bot.stopDigging();
+
+      bot.deactivateItem();
+    }
+
+    return {
+      stopped:
+        executionId !== null,
+
       executionId,
-      skill: "cancel"
-    });
+
+      skill
+    };
   }
 }
