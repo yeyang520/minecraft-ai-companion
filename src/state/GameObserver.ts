@@ -10,6 +10,14 @@ export class GameObserver {
   snapshot(): GameState {
     const bot = this.getBot();
 
+    const inventoryItems = bot.inventory.items();
+
+    const occupiedSlots = inventoryItems.length;
+
+    const totalSlots = 36;
+
+    const freeSlots = Math.max(0,totalSlots - occupiedSlots);
+
     if (!bot?.entity) {
       return {
         timestamp: Date.now(),
@@ -62,7 +70,15 @@ export class GameObserver {
         isOnGround: bot.entity.onGround,
         isInWater: bot.entity.isInWater
       },
-      inventory,
+      inventory:{
+          items,
+          heldItem:
+            bot.heldItem?.name ?? null,
+          occupiedSlots,
+          freeSlots,
+          isFull:
+            freeSlots === 0
+      },
       currentSkill: this.getCurrentSkill()
     };
   }

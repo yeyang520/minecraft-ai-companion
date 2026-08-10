@@ -32,6 +32,10 @@ export interface InventoryState {
   counts: Record<string, number>;
   emptySlots: number;
   heldItem: string | null;
+
+  occupiedSlots: number;
+  freeSlots: number;
+  isFull: boolean;
 }
 
 // skill执行状态

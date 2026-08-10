@@ -20,6 +20,7 @@ export type SkillFailureReason =
   | "TARGET_NOT_ACCESSIBLE"
   | "BLOCK_NOT_DIGGABLE"
   | "INVENTORY_FULL"
+  | "TOOL_MISSING"
   | "NO_PROGRESS"
   | "CANCELLED"
   | "TIMEOUT"
