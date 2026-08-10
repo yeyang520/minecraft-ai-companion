@@ -7,6 +7,7 @@ import {CollectBlockSkill} from "./resource/CollectBlockSkill";
 import {FindHarvestSourceSkill} from "./perception/FindHarvestSourceSkill";
 import {CollectItemSkill} from "./resource/CollectItemSkill";
 import {CheckHarvestToolSkill} from "./perception/CheckHarvestToolSkill";
+import {CheckCraftRequirementSkill} from "./perception/CheckCraftRequirementSkill";
 
 export class SkillRegistry {
   private readonly skills = new Map<string, Skill<any>>();
@@ -21,6 +22,7 @@ export class SkillRegistry {
     this.register(new FindHarvestSourceSkill());
     this.register(new CollectItemSkill());
     this.register(new CheckHarvestToolSkill());
+    this.register(new CheckCraftRequirementSkill());
   }
 
   // 注册skill
