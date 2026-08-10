@@ -18,6 +18,7 @@ export class FollowPlayerSkill
   implements Skill<FollowPlayerParams> {
 
   readonly name = "follow_player";
+  readonly category = "ACTION" as const;
 
   async execute(
     ctx: SkillContext,

@@ -17,3 +17,7 @@ export type ClientCommand =
       type: "skill.cancel";
       requestId: string;
     };
+  | {
+      type: "agent.stop";
+      requestId: string;
+    };

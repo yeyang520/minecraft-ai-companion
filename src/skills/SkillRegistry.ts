@@ -2,6 +2,9 @@ import type { Skill } from "./Skill";
 import { GotoPositionSkill } from "./movement/GotoPositionSkill";
 import { GotoPlayerSkill } from "./movement/GotoPlayerSkill";
 import { FollowPlayerSkill } from "./movement/FollowPlayerSkill";
+import {
+  FindBlockSkill
+} from "./perception/FindBlockSkill";
 
 export class SkillRegistry {
   private readonly skills = new Map<string, Skill<any>>();
@@ -11,6 +14,7 @@ export class SkillRegistry {
     this.register(new GotoPositionSkill());
     this.register(new GotoPlayerSkill());
     this.register(new FollowPlayerSkill());
+    this.register(new FindBlockSkill());
   }
 
   // 注册skill

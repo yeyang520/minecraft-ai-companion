@@ -1,5 +1,9 @@
 import type { Bot } from "mineflayer";
 
+export type SkillCategory =
+  | "ACTION"
+  | "QUERY";
+
 export type SkillStatus =
   | "SUCCESS"
   | "FAILED"
@@ -15,6 +19,8 @@ export type SkillFailureReason =
   | "TIMEOUT"
   | "UNKNOWN";
 
+// progress:执行进度
+// data:寻找方块信息
 export interface SkillResult {
   skill: string;
   status: SkillStatus;
@@ -22,6 +28,7 @@ export interface SkillResult {
   startedAt: number;
   finishedAt: number;
   progress?: Record<string, number | string | boolean>;
+  data?:unknown;
 }
 
 export interface SkillContext {
@@ -30,6 +37,7 @@ export interface SkillContext {
 
 export interface Skill<TParams = unknown> {
   readonly name: string;
+  readonly category: SkillCategory;
 
   execute(
     ctx: SkillContext,

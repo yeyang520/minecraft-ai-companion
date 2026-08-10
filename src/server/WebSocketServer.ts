@@ -103,6 +103,17 @@ export class MacWebSocketServer {
         this.skillManager.cancel(command.requestId);
         return;
 
+      case "agent.stop": {
+        const result = this.skillManager.stop();
+
+        this.send(socket, {
+          type: "agent.stopped",
+          requestId: command.requestId,
+          ...result
+        });
+        return;
+      }
+
       default:
         this.send(socket, {
           type: "error",

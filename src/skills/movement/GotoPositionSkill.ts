@@ -10,6 +10,7 @@ export interface GotoPositionParams {
 
 export class GotoPositionSkill implements Skill<GotoPositionParams> {
   readonly name = "goto_position";
+  readonly category = "ACTION" as const;
 
   async execute(
     ctx: SkillContext,

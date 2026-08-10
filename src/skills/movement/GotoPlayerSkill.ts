@@ -46,6 +46,7 @@ const sleep = (ms: number) =>
 
 export class GotoPlayerSkill implements Skill<GotoPlayerParams> {
   readonly name = "goto_player";
+  readonly category = "ACTION" as const;
 
   async execute(
     ctx: SkillContext,

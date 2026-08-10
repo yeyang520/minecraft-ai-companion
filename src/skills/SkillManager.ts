@@ -32,6 +32,118 @@ export class SkillManager {
     skillName: string,
     params: unknown
   ): Promise<void> {
+
+    // ==============================
+    // 1. Bot 是否可用
+    // ==============================
+
+    if (!this.botManager.isReady()) {
+
+      this.emit(
+        "skill.completed",
+        {
+          requestId,
+
+          result: {
+            skill: skillName,
+            status: "FAILED",
+            reason: "BOT_NOT_READY"
+          }
+        }
+      );
+
+      return;
+    }
+
+    // ==============================
+    // 2. Skill 是否存在
+    // ==============================
+
+    const skill =
+      this.registry.get(skillName);
+
+    if (!skill) {
+
+      this.emit(
+        "skill.completed",
+        {
+          requestId,
+
+          result: {
+            skill: skillName,
+            status: "FAILED",
+            reason: "UNKNOWN_SKILL"
+          }
+        }
+      );
+
+      return;
+    }
+
+    const bot =
+      this.botManager.getBot()!;
+
+    // ==============================
+    // 3. QUERY Skill
+    //    不占用身体，可以并行
+    // ==============================
+
+    if (skill.category === "QUERY") {
+
+      const executionId =
+        randomUUID();
+
+      this.emit(
+        "skill.accepted",
+        {
+          requestId,
+          executionId,
+          skill: skillName
+        }
+      );
+
+      try {
+
+        const result =
+          await skill.execute(
+            { bot },
+            params,
+            new AbortController().signal
+          );
+
+        this.emit(
+          "skill.completed",
+          {
+            requestId,
+            executionId,
+            result
+          }
+        );
+      }
+      catch (error) {
+
+       console.error(
+          `[QUERY ${skillName}] error:`,
+          error
+        );
+
+       this.emit(
+         "skill.completed",
+         {
+           requestId,
+           executionId,
+
+           result: {
+             skill: skillName,
+             status: "FAILED",
+             reason: "UNKNOWN"
+           }
+         }
+        );
+      }
+    return;
+    }
+
     if (this.current) {
       this.emit("skill.completed", {
         requestId,
@@ -56,8 +168,6 @@ export class SkillManager {
       return;
     }
 
-    const skill = this.registry.get(skillName);
-
     if (!skill) {
       this.emit("skill.completed", {
         requestId,
@@ -70,7 +180,6 @@ export class SkillManager {
       return;
     }
 
-    const bot = this.botManager.getBot()!;
     const executionId = randomUUID();
     const controller = new AbortController();
 
