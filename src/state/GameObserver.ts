@@ -10,6 +10,38 @@ export class GameObserver {
   snapshot(): GameState {
     const bot = this.getBot();
 
+    // ==========================================
+    // Bot 尚未完全进入世界
+    // ==========================================
+    if (
+      !bot ||
+      !this.botManager.isReady() ||
+      !bot.entity ||
+      !bot.inventory
+    ) {
+
+      return {
+        timestamp:
+          Date.now(),
+        connected:
+          false,
+        bot:
+          null,
+        inventory: {
+          items: [],
+          heldItem: null,
+          occupiedSlots: 0,
+          freeSlots: 36,
+          isFull: false
+        },
+        currentSkill:
+          this.skillManager.getCurrentSkill()
+      };
+    }
+
+    // ==========================================
+    // 到这里才允许访问 inventory
+    // ==========================================
     const inventoryItems = bot.inventory.items();
 
     const occupiedSlots = inventoryItems.length;
