@@ -6,8 +6,8 @@ import type {
 
 import {
   getHarvestSources,
-  hasHarvestKnowledge,
-  toolMeetsRequirement
+  toolMeetsRequirement,
+  type HarvestSource
 } from "../../knowledge/HarvestKnowledge";
 
 import {
@@ -15,23 +15,81 @@ import {
 } from "./CollectBlockSkill";
 
 
+// =====================================================
+// Params
+//
+// collect_item 的 amount 是“增量语义”
+//
+// 当前 cobblestone = 2
+// collect_item(cobblestone, 3)
+//
+// 最终目标：
+// cobblestone >= 5
+// =====================================================
+
 export interface CollectItemParams {
+
+  // 最终希望进入 Inventory 的 Item
+  //
+  // 例如：
+  // cobblestone
+  // dirt
+  // raw_iron
   item: string;
-  amount: number;
+
+
+  // 希望额外获得多少
+  amount?: number;
+
+
+  // 搜索资源的半径
   radius?: number;
+
+
+  // 每一种 Source 最多检查多少候选
   maxCandidates?: number;
+
+
+  pickupWaitTicks?: number;
 }
 
+
+// =====================================================
+// CollectItemSkill
+// =====================================================
 
 export class CollectItemSkill
   implements Skill<CollectItemParams> {
 
-  readonly name = "collect_item";
-  readonly category = "ACTION" as const;
+  readonly name =
+    "collect_item";
 
-  private readonly blockCollector =
+
+  readonly category =
+    "ACTION" as const;
+
+
+  // ===================================================
+  // 直接复用底层 CollectBlockSkill
+  //
+  // 注意：
+  //
+  // 不通过 SkillManager 再调用。
+  //
+  // 外层 currentSkill 仍然只是：
+  //
+  // collect_item
+  //
+  // 不会产生嵌套 ACTION BUSY。
+  // ===================================================
+
+  private readonly collectBlock =
     new CollectBlockSkill();
 
+
+  // ===================================================
+  // Execute
+  // ===================================================
 
   async execute(
     ctx: SkillContext,
@@ -39,86 +97,30 @@ export class CollectItemSkill
     signal: AbortSignal
   ): Promise<SkillResult> {
 
-    const startedAt = Date.now();
-    const { bot } = ctx;
+    const startedAt =
+      Date.now();
+
+
+    const { bot } =
+      ctx;
 
 
     // =================================================
-    // 1. 参数检查
+    // 1. 参数
     // =================================================
 
-    if (
-      !Number.isInteger(params.amount) ||
-      params.amount <= 0
-    ) {
-      return {
-        skill: this.name,
-        status: "FAILED",
-        reason: "INVALID_ARGUMENT",
-        startedAt,
-        finishedAt: Date.now(),
-
-        progress: {
-          item: params.item,
-          requested: params.amount,
-          collected: 0
-        }
-      };
-    }
-
-
-    if (
-      !bot.registry.itemsByName[
-        params.item
-      ]
-    ) {
-      return {
-        skill: this.name,
-        status: "FAILED",
-        reason: "INVALID_ARGUMENT",
-        startedAt,
-        finishedAt: Date.now(),
-
-        progress: {
-          item: params.item,
-          requested: params.amount,
-          collected: 0
-        }
-      };
-    }
-
-
-    // =================================================
-    // 2. Harvest Knowledge
-    // =================================================
-
-    if (
-      !hasHarvestKnowledge(
-        params.item
-      )
-    ) {
-      return {
-        skill: this.name,
-        status: "FAILED",
-        reason: "INVALID_ARGUMENT",
-        startedAt,
-        finishedAt: Date.now(),
-
-        data: {
-          item: params.item,
-          error:
-            "HARVEST_KNOWLEDGE_NOT_FOUND"
-        }
-      };
-    }
+    const amount =
+      params.amount ??
+      1;
 
 
     const radius =
       Math.max(
         1,
         Math.min(
-          params.radius ?? 32,
-          64
+          params.radius ??
+          32,
+          128
         )
       );
 
@@ -127,22 +129,119 @@ export class CollectItemSkill
       Math.max(
         1,
         Math.min(
-          params.maxCandidates ?? 16,
-          32
+          params.maxCandidates ??
+          32,
+          128
+        )
+      );
+
+
+    const pickupWaitTicks =
+      Math.max(
+        1,
+        Math.min(
+          params.pickupWaitTicks ??
+          12,
+          40
         )
       );
 
 
     // =================================================
-    // 3. 记录开始库存
+    // 2. 参数验证
     // =================================================
 
-    const startCount =
-      this.countItem(
-        bot,
-        params.item
-      );
+    if (
+      !params.item ||
+      !Number.isInteger(amount) ||
+      amount <= 0
+    ) {
 
+      return {
+
+        skill:
+          this.name,
+
+        status:
+          "FAILED",
+
+        reason:
+          "INVALID_ARGUMENT",
+
+        startedAt,
+
+        finishedAt:
+          Date.now(),
+
+        data: {
+
+          item:
+            params.item,
+
+          amount
+        }
+      };
+    }
+
+
+    // =================================================
+    // 3. Minecraft 当前版本是否存在这个 Item
+    // =================================================
+
+    const itemInfo =
+      bot.registry.itemsByName[
+        params.item
+      ];
+
+
+    if (!itemInfo) {
+
+      return {
+
+        skill:
+          this.name,
+
+        status:
+          "FAILED",
+
+        reason:
+          "INVALID_ARGUMENT",
+
+        startedAt,
+
+        finishedAt:
+          Date.now(),
+
+        data: {
+
+          item:
+            params.item,
+
+          error:
+            "ITEM_NOT_FOUND"
+        }
+      };
+    }
+
+
+    // =================================================
+    // 4. Harvest Knowledge
+    //
+    // 注意：
+    //
+    // 这里返回的是 Source。
+    //
+    // 例如：
+    //
+    // item = cobblestone
+    //
+    // source = {
+    //   block: "stone",
+    //   expectedItem: "cobblestone"
+    // }
+    //
+    // item 和 block 不能混为一谈。
+    // =================================================
 
     const sources =
       getHarvestSources(
@@ -150,24 +249,96 @@ export class CollectItemSkill
       );
 
 
-    const attemptedSources:
-      string[] = [];
+    if (
+      sources.length === 0
+    ) {
 
+      return {
 
-    const toolBlockedSources:
-      string[] = [];
+        skill:
+          this.name,
 
+        status:
+          "FAILED",
 
-    let foundNearbySource =
-      false;
+        reason:
+          "INVALID_ARGUMENT",
 
+        startedAt,
 
-    let foundUsableSource =
-      false;
+        finishedAt:
+          Date.now(),
+
+        data: {
+
+          item:
+            params.item,
+
+          error:
+            "NO_HARVEST_KNOWLEDGE"
+        }
+      };
+    }
 
 
     // =================================================
-    // 4. 按 Harvest Knowledge 优先级寻找来源
+    // 5. 开始前 Inventory
+    // =================================================
+
+    const startCount =
+      this.countItem(
+        ctx,
+        params.item
+      );
+
+
+    const targetCount =
+      startCount +
+      amount;
+
+
+    // =================================================
+    // 用于最终错误分类
+    // =================================================
+
+    const attemptedSources:
+      Array<{
+        block: string;
+        expectedItem: string;
+        found: boolean;
+        requiredTool?: unknown;
+        selectedTool?: string | null;
+        result?: unknown;
+      }> = [];
+
+
+    const toolBlockedSources:
+      Array<{
+        block: string;
+        expectedItem: string;
+        requiredTool: unknown;
+      }> = [];
+
+
+    let foundAnySourceBlock =
+      false;
+
+
+    let lastRetryableFailure:
+      SkillResult | null =
+      null;
+
+
+    // =================================================
+    // 6. 逐个尝试 Source
+    //
+    // Knowledge 的顺序就是优先级。
+    //
+    // 例如 dirt：
+    //
+    // grass_block
+    // ↓
+    // dirt
     // =================================================
 
     for (
@@ -179,200 +350,300 @@ export class CollectItemSkill
       // Cancel
       // ===============================================
 
-      if (signal.aborted) {
-        return this.cancelled(
-          startedAt,
+      if (
+        signal.aborted
+      ) {
+
+        return this.cancelledResult(
+          ctx,
           params,
+          amount,
           startCount,
-          attemptedSources,
-          toolBlockedSources,
-          bot
+          startedAt,
+          attemptedSources
         );
       }
 
 
       // ===============================================
-      // 重新读取真实 Inventory
-      //
-      // 前一种来源可能已经拿到一部分资源。
+      // 目标可能已经在上一个 Source 中部分获得
       // ===============================================
 
       const currentCount =
         this.countItem(
-          bot,
+          ctx,
           params.item
         );
 
 
-      const collected =
-        Math.max(
-          0,
-          currentCount -
-          startCount
-        );
-
-
-      const remaining =
-        params.amount -
-        collected;
-
-
       if (
-        remaining <= 0
+        currentCount >=
+        targetCount
       ) {
-        return this.success(
-          startedAt,
+
+        return this.successResult(
+          ctx,
           params,
+          amount,
           startCount,
-          attemptedSources,
-          toolBlockedSources,
-          bot
+          startedAt,
+          attemptedSources
         );
       }
 
 
+      const remaining =
+        targetCount -
+        currentCount;
+
+
       // ===============================================
-      // 当前 Minecraft 版本是否存在这种 Block
+      // 7. 关键修复：
+      //
+      // 搜索 source.block
+      //
+      // 不是 params.item
       // ===============================================
 
-      const blockInfo =
+      const sourceBlockInfo =
         bot.registry.blocksByName[
           source.block
         ];
 
 
-      if (!blockInfo) {
+      if (!sourceBlockInfo) {
+
+        attemptedSources.push({
+
+          block:
+            source.block,
+
+          expectedItem:
+            source.expectedItem,
+
+          found:
+            false,
+
+          requiredTool:
+            source.requiredTool,
+
+          result: {
+            error:
+              "SOURCE_BLOCK_NOT_IN_REGISTRY"
+          }
+        });
+
+
         continue;
       }
 
 
       // ===============================================
-      // 4.1 先检查附近有没有这个资源来源
+      // 8. 先判断世界里有没有这个 Source Block
+      //
+      // cobblestone:
+      //
+      // 查的是 stone
+      //
+      // raw_iron:
+      //
+      // 查的是 iron_ore
       // ===============================================
 
-      const nearby =
+      const positions =
         bot.findBlocks({
 
           matching:
-            blockInfo.id,
+            sourceBlockInfo.id,
 
           maxDistance:
             radius,
 
           count:
-            1
+            maxCandidates
         });
 
 
+      const sourceFound =
+        positions.length > 0;
+
+
       if (
-        nearby.length === 0
+        !sourceFound
       ) {
+
+        attemptedSources.push({
+
+          block:
+            source.block,
+
+          expectedItem:
+            source.expectedItem,
+
+          found:
+            false,
+
+          requiredTool:
+            source.requiredTool
+        });
+
+
+        // 当前来源没找到。
+        // 尝试 HarvestKnowledge 中下一个来源。
         continue;
       }
 
 
-      foundNearbySource =
+      foundAnySourceBlock =
         true;
 
 
-      // ===============================================
-      // 4.2 检查工具要求
+      // =================================================
+      // 9. Tool Requirement
       //
-      // 例如：
+      // Source 确实存在以后再检查工具。
       //
-      // raw_iron
-      // → iron_ore
-      // → stone_pickaxe+
-      // ===============================================
+      // 这样错误分类会更准确：
+      //
+      // 有 stone 但没木镐
+      // → TOOL_MISSING
+      //
+      // 而不是 RESOURCE_NOT_FOUND。
+      // =================================================
+
+      let selectedTool:
+        string | null =
+        null;
+
 
       if (
         source.requiredTool
       ) {
 
-        const validTool =
-          bot.inventory
-            .items()
-            .find(
-              item =>
-                toolMeetsRequirement(
-                  item.name,
-                  source.requiredTool!
-                )
-            );
-
-
-        // =============================================
-        // 附近有矿，但当前工具不够
-        //
-        // 不允许进入 CollectBlockSkill。
-        // 更不能拿木镐去尝试。
-        // =============================================
-
-        if (!validTool) {
-
-          toolBlockedSources.push(
-            source.block
+        const tool =
+          this.findValidTool(
+            ctx,
+            source
           );
 
+
+        if (!tool) {
+
+          toolBlockedSources.push({
+
+            block:
+              source.block,
+
+            expectedItem:
+              source.expectedItem,
+
+            requiredTool:
+              source.requiredTool
+          });
+
+
+          attemptedSources.push({
+
+            block:
+              source.block,
+
+            expectedItem:
+              source.expectedItem,
+
+            found:
+              true,
+
+            requiredTool:
+              source.requiredTool,
+
+            selectedTool:
+              null,
+
+            result: {
+              error:
+                "TOOL_MISSING"
+            }
+          });
+
+
+          // 也许另一个 Source 不需要这个工具，
+          // 所以先继续。
           continue;
         }
 
 
-        // =============================================
-        // 已经知道这个工具符合最低要求。
-        //
-        // 先明确装备。
-        // =============================================
+        selectedTool =
+          tool.name;
+
+
+        // ===============================================
+        // 显式装备符合要求的工具
+        // ===============================================
 
         try {
 
           await bot.equip(
-            validTool,
+            tool,
             "hand"
           );
-        }
-        catch {
 
-          return {
-            skill: this.name,
-            status: "FAILED",
-            reason: "TOOL_MISSING",
-            startedAt,
-            finishedAt: Date.now(),
+        } catch (error) {
 
-            progress:
-              this.buildProgress(
-                params,
-                startCount,
-                attemptedSources,
-                toolBlockedSources,
-                bot
-              )
-          };
+          attemptedSources.push({
+
+            block:
+              source.block,
+
+            expectedItem:
+              source.expectedItem,
+
+            found:
+              true,
+
+            requiredTool:
+              source.requiredTool,
+
+            selectedTool,
+
+            result: {
+              error:
+                "TOOL_EQUIP_FAILED",
+
+              detail:
+                String(error)
+            }
+          });
+
+
+          // 换下一个 Source。
+          continue;
         }
       }
 
 
-      foundUsableSource =
-        true;
-
-
-      attemptedSources.push(
-        source.block
-      );
-
-
-      // ===============================================
-      // 4.3 调用已经验证过的 CollectBlockSkill
+      // =================================================
+      // 10. 真正调用 CollectBlock
       //
-      // 不经过 SkillManager，
-      // 因此不会产生 ACTION BUSY。
-      // ===============================================
+      // 这是整个修复最关键的地方：
+      //
+      // block = source.block
+      //
+      // expectedItem = source.expectedItem
+      //
+      //
+      // cobblestone:
+      //
+      // block = stone
+      // expectedItem = cobblestone
+      // =================================================
 
-      const result =
-        await this.blockCollector.execute(
+      const collectResult =
+        await this.collectBlock.execute(
+
           ctx,
+
           {
+
             block:
               source.block,
 
@@ -384,104 +655,144 @@ export class CollectItemSkill
 
             radius,
 
-            maxCandidates
+            maxCandidates,
+
+            pickupWaitTicks
           },
+
           signal
         );
 
 
-      // ===============================================
-      // 4.4 Cancel
-      // ===============================================
+      attemptedSources.push({
+
+        block:
+          source.block,
+
+        expectedItem:
+          source.expectedItem,
+
+        found:
+          true,
+
+        requiredTool:
+          source.requiredTool,
+
+        selectedTool,
+
+        result:
+          collectResult
+      });
+
+
+      // =================================================
+      // 11. Cancel
+      // =================================================
 
       if (
         signal.aborted ||
-        result.status ===
+        collectResult.status ===
           "CANCELLED"
       ) {
-        return this.cancelled(
-          startedAt,
+
+        return this.cancelledResult(
+          ctx,
           params,
+          amount,
           startCount,
-          attemptedSources,
-          toolBlockedSources,
-          bot
+          startedAt,
+          attemptedSources
         );
       }
 
 
-      // ===============================================
-      // 4.5 最终仍然以真实 Inventory 为准
+      // =================================================
+      // 12. 重新读取 Inventory
       //
-      // 不盲信 CollectBlockSkill 的返回。
-      // ===============================================
+      // 不相信 collectResult 自己说收集了多少。
+      //
+      // Inventory 才是真实状态。
+      // =================================================
 
-      const afterCount =
+      const afterCollectCount =
         this.countItem(
-          bot,
+          ctx,
           params.item
         );
 
 
       if (
-        afterCount -
-        startCount >=
-        params.amount
+        afterCollectCount >=
+        targetCount
       ) {
-        return this.success(
-          startedAt,
+
+        return this.successResult(
+          ctx,
           params,
+          amount,
           startCount,
-          attemptedSources,
-          toolBlockedSources,
-          bot
+          startedAt,
+          attemptedSources
         );
       }
 
 
-      // ===============================================
-      // 4.6 当前来源失败，但可以换其他来源
+      // =================================================
+      // 13. CollectBlock SUCCESS
+      //
+      // 但还没达到总目标。
       //
       // 例如：
       //
-      // iron_ore 走不到
-      // → 尝试 deepslate_iron_ore
-      // ===============================================
+      // 当前 Source 实际只够获得2个，
+      // 目标是4个。
+      //
+      // 继续尝试下一个 Source。
+      // =================================================
 
       if (
-        result.status ===
-          "FAILED" &&
-        (
-          result.reason ===
-            "RESOURCE_NOT_FOUND" ||
-
-          result.reason ===
-            "PATH_NOT_FOUND" ||
-
-          result.reason ===
-            "TARGET_NOT_ACCESSIBLE" ||
-
-          result.reason ===
-            "BLOCK_NOT_DIGGABLE"
-        )
+        collectResult.status ===
+        "SUCCESS"
       ) {
+
         continue;
       }
 
 
-      // ===============================================
-      // 4.7 其他严重错误直接向上返回
+      // =================================================
+      // 14. Retryable Failure
       //
-      // NO_PROGRESS
-      // INVENTORY_FULL
-      // UNKNOWN
-      // ...
-      // ===============================================
+      // 当前 Source 不好用，
+      // 尝试另一个合法来源。
+      // =================================================
 
       if (
-        result.status ===
+        collectResult.status ===
+          "FAILED" &&
+        this.isRetryableSourceFailure(
+          collectResult.reason
+        )
+      ) {
+
+        lastRetryableFailure =
+          collectResult;
+
+
+        continue;
+      }
+
+
+      // =================================================
+      // 15. 严重错误直接向上传播
+      //
+      // 例如 Inventory Full。
+      // =================================================
+
+      if (
+        collectResult.status ===
         "FAILED"
       ) {
+
         return {
 
           skill:
@@ -491,7 +802,8 @@ export class CollectItemSkill
             "FAILED",
 
           reason:
-            result.reason,
+            collectResult.reason ??
+            "UNKNOWN",
 
           startedAt,
 
@@ -500,63 +812,91 @@ export class CollectItemSkill
 
           progress:
             this.buildProgress(
+              ctx,
               params,
-              startCount,
-              attemptedSources,
-              toolBlockedSources,
-              bot
-            )
+              amount,
+              startCount
+            ),
+
+          data: {
+
+            item:
+              params.item,
+
+            source: {
+
+              block:
+                source.block,
+
+              expectedItem:
+                source.expectedItem
+            },
+
+            result:
+              collectResult,
+
+            attemptedSources
+          }
         };
       }
     }
 
 
     // =================================================
-    // 5. 所有来源处理完
+    // 16. 所有 Source 都尝试完了
     // =================================================
 
     const finalCount =
       this.countItem(
-        bot,
+        ctx,
         params.item
       );
 
 
-    const finalCollected =
-      finalCount -
-      startCount;
-
+    // =================================================
+    // 理论上已经够了
+    // =================================================
 
     if (
-      finalCollected >=
-      params.amount
+      finalCount >=
+      targetCount
     ) {
-      return this.success(
-        startedAt,
+
+      return this.successResult(
+        ctx,
         params,
+        amount,
         startCount,
-        attemptedSources,
-        toolBlockedSources,
-        bot
+        startedAt,
+        attemptedSources
       );
     }
 
 
     // =================================================
-    // 6. 附近确实有资源，但是所有可见来源
-    //    都被工具要求挡住
+    // 17. 明明确实找到了资源块，
+    // 但所有可用 Source 都被工具要求挡住。
     //
     // 例如：
     //
-    // 看见 iron_ore
-    // 只有 wooden_pickaxe
-    // ================================================
+    // stone 找到了
+    // wooden_pickaxe 没有
+    //
+    // 必须返回 TOOL_MISSING。
+    //
+    // 这对 EnsureItem 非常重要：
+    //
+    // TOOL_MISSING
+    // ↓
+    // 自动 ensure wooden_pickaxe
+    // =================================================
 
     if (
-      foundNearbySource &&
-      !foundUsableSource &&
-      toolBlockedSources.length > 0
+      foundAnySourceBlock &&
+      toolBlockedSources.length >
+        0
     ) {
+
       return {
 
         skill:
@@ -575,18 +915,135 @@ export class CollectItemSkill
 
         progress:
           this.buildProgress(
+            ctx,
             params,
-            startCount,
-            attemptedSources,
-            toolBlockedSources,
-            bot
-          )
+            amount,
+            startCount
+          ),
+
+        data: {
+
+          item:
+            params.item,
+
+          toolBlockedSources,
+
+          attemptedSources
+        }
       };
     }
 
 
     // =================================================
-    // 7. 没找到可以获得该物品的资源
+    // 18. 资源确实存在，
+    // 但是所有 CollectBlock 尝试都失败。
+    //
+    // 保留最真实的底层原因。
+    //
+    // 不要错误转换成 RESOURCE_NOT_FOUND。
+    // =================================================
+
+    if (
+      foundAnySourceBlock &&
+      lastRetryableFailure
+    ) {
+
+      return {
+
+        skill:
+          this.name,
+
+        status:
+          "FAILED",
+
+        reason:
+          lastRetryableFailure.reason ??
+          "TARGET_NOT_ACCESSIBLE",
+
+        startedAt,
+
+        finishedAt:
+          Date.now(),
+
+        progress:
+          this.buildProgress(
+            ctx,
+            params,
+            amount,
+            startCount
+          ),
+
+        data: {
+
+          item:
+            params.item,
+
+          attemptedSources,
+
+          lastFailure:
+            lastRetryableFailure
+        }
+      };
+    }
+
+
+    // =================================================
+    // 19. 真正一个 Source Block 都没找到
+    //
+    // 只有这种情况才叫：
+    //
+    // RESOURCE_NOT_FOUND
+    // =================================================
+
+    if (
+      !foundAnySourceBlock
+    ) {
+
+      return {
+
+        skill:
+          this.name,
+
+        status:
+          "FAILED",
+
+        reason:
+          "RESOURCE_NOT_FOUND",
+
+        startedAt,
+
+        finishedAt:
+          Date.now(),
+
+        progress:
+          this.buildProgress(
+            ctx,
+            params,
+            amount,
+            startCount
+          ),
+
+        data: {
+
+          item:
+            params.item,
+
+          radius,
+
+          attemptedSources,
+
+          searchedBlocks:
+            sources.map(
+              source =>
+                source.block
+            )
+        }
+      };
+    }
+
+
+    // =================================================
+    // 20. 兜底
     // =================================================
 
     return {
@@ -598,7 +1055,7 @@ export class CollectItemSkill
         "FAILED",
 
       reason:
-        "RESOURCE_NOT_FOUND",
+        "NO_PROGRESS",
 
       startedAt,
 
@@ -607,13 +1064,101 @@ export class CollectItemSkill
 
       progress:
         this.buildProgress(
+          ctx,
           params,
-          startCount,
-          attemptedSources,
-          toolBlockedSources,
-          bot
-        )
+          amount,
+          startCount
+        ),
+
+      data: {
+
+        item:
+          params.item,
+
+        attemptedSources
+      }
     };
+  }
+
+
+  // ===================================================
+  // Find Valid Tool
+  //
+  // 找到背包中满足 HarvestRequirement 的工具。
+  // ===================================================
+
+  private findValidTool(
+    ctx: SkillContext,
+    source: HarvestSource
+  ) {
+
+    if (
+      !source.requiredTool
+    ) {
+
+      return null;
+    }
+
+
+    const candidates =
+      ctx.bot.inventory
+        .items()
+        .filter(
+          item =>
+            toolMeetsRequirement(
+              item.name,
+              source.requiredTool!
+            )
+        );
+
+
+    if (
+      candidates.length ===
+      0
+    ) {
+
+      return null;
+    }
+
+
+    // =================================================
+    // 当前阶段只要满足最低要求即可。
+    //
+    // 后面可以再按：
+    //
+    // 耐久
+    // 速度
+    // 工具等级
+    //
+    // 排序。
+    // =================================================
+
+    return candidates[0];
+  }
+
+
+  // ===================================================
+  // 哪些底层失败允许切换 Source？
+  // ===================================================
+
+  private isRetryableSourceFailure(
+    reason:
+      SkillResult["reason"]
+  ): boolean {
+
+    return (
+      reason ===
+        "RESOURCE_NOT_FOUND" ||
+
+      reason ===
+        "PATH_NOT_FOUND" ||
+
+      reason ===
+        "TARGET_NOT_ACCESSIBLE" ||
+
+      reason ===
+        "BLOCK_NOT_DIGGABLE"
+    );
   }
 
 
@@ -622,11 +1167,11 @@ export class CollectItemSkill
   // ===================================================
 
   private countItem(
-    bot: SkillContext["bot"],
+    ctx: SkillContext,
     itemName: string
   ): number {
 
-    return bot.inventory
+    return ctx.bot.inventory
       .items()
       .filter(
         item =>
@@ -650,16 +1195,15 @@ export class CollectItemSkill
   // ===================================================
 
   private buildProgress(
+    ctx: SkillContext,
     params: CollectItemParams,
-    startCount: number,
-    attemptedSources: string[],
-    toolBlockedSources: string[],
-    bot: SkillContext["bot"]
+    amount: number,
+    startCount: number
   ) {
 
     const currentCount =
       this.countItem(
-        bot,
+        ctx,
         params.item
       );
 
@@ -670,7 +1214,7 @@ export class CollectItemSkill
         params.item,
 
       requested:
-        params.amount,
+        amount,
 
       collected:
         Math.max(
@@ -683,11 +1227,17 @@ export class CollectItemSkill
 
       currentCount,
 
-      attemptedSources:
-        [...attemptedSources],
+      targetCount:
+        startCount +
+        amount,
 
-      toolBlockedSources:
-        [...toolBlockedSources]
+      missing:
+        Math.max(
+          0,
+          startCount +
+          amount -
+          currentCount
+        )
     };
   }
 
@@ -696,13 +1246,13 @@ export class CollectItemSkill
   // SUCCESS
   // ===================================================
 
-  private success(
-    startedAt: number,
+  private successResult(
+    ctx: SkillContext,
     params: CollectItemParams,
+    amount: number,
     startCount: number,
-    attemptedSources: string[],
-    toolBlockedSources: string[],
-    bot: SkillContext["bot"]
+    startedAt: number,
+    attemptedSources: unknown[]
   ): SkillResult {
 
     return {
@@ -720,12 +1270,19 @@ export class CollectItemSkill
 
       progress:
         this.buildProgress(
+          ctx,
           params,
-          startCount,
-          attemptedSources,
-          toolBlockedSources,
-          bot
-        )
+          amount,
+          startCount
+        ),
+
+      data: {
+
+        item:
+          params.item,
+
+        attemptedSources
+      }
     };
   }
 
@@ -734,14 +1291,47 @@ export class CollectItemSkill
   // CANCELLED
   // ===================================================
 
-  private cancelled(
-    startedAt: number,
+  private cancelledResult(
+    ctx: SkillContext,
     params: CollectItemParams,
+    amount: number,
     startCount: number,
-    attemptedSources: string[],
-    toolBlockedSources: string[],
-    bot: SkillContext["bot"]
+    startedAt: number,
+    attemptedSources: unknown[]
   ): SkillResult {
+
+    const { bot } =
+      ctx;
+
+
+    try {
+
+      bot.pathfinder.setGoal(
+        null
+      );
+
+    } catch {
+      // ignore
+    }
+
+
+    try {
+
+      bot.clearControlStates();
+
+    } catch {
+      // ignore
+    }
+
+
+    try {
+
+      bot.stopDigging();
+
+    } catch {
+      // ignore
+    }
+
 
     return {
 
@@ -761,12 +1351,19 @@ export class CollectItemSkill
 
       progress:
         this.buildProgress(
+          ctx,
           params,
-          startCount,
-          attemptedSources,
-          toolBlockedSources,
-          bot
-        )
+          amount,
+          startCount
+        ),
+
+      data: {
+
+        item:
+          params.item,
+
+        attemptedSources
+      }
     };
   }
 }

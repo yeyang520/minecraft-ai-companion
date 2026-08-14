@@ -5,10 +5,17 @@ import type {
 } from "../Skill";
 
 import {
-  getCraftRecipe,
-  hasCraftingKnowledge
+  getCraftRecipe
 } from "../../knowledge/CraftingKnowledge";
 
+import {
+  getResourceGroupMembers
+} from "../../knowledge/ResourceGroups";
+
+
+// =====================================================
+// Params
+// =====================================================
 
 export interface CheckCraftRequirementParams {
 
@@ -20,11 +27,16 @@ export interface CheckCraftRequirementParams {
 }
 
 
+// =====================================================
+// Skill
+// =====================================================
+
 export class CheckCraftRequirementSkill
   implements Skill<CheckCraftRequirementParams> {
 
   readonly name =
     "check_craft_requirement";
+
 
   readonly category =
     "QUERY" as const;
@@ -39,20 +51,25 @@ export class CheckCraftRequirementSkill
     const startedAt =
       Date.now();
 
+
     const { bot } =
       ctx;
 
 
-    // =================================================
-    // 1. 参数检查
-    // =================================================
-
     const amount =
-      params.amount ?? 1;
+      params.amount ??
+      1;
 
+
+    // =================================================
+    // 参数
+    // =================================================
 
     if (
-      !Number.isInteger(amount) ||
+      !params.item ||
+      !Number.isInteger(
+        amount
+      ) ||
       amount <= 0
     ) {
 
@@ -75,94 +92,44 @@ export class CheckCraftRequirementSkill
     }
 
 
-    if (
-      !bot.registry.itemsByName[
-        params.item
-      ]
-    ) {
-
-      return {
-
-        skill:
-          this.name,
-
-        status:
-          "FAILED",
-
-        reason:
-          "INVALID_ARGUMENT",
-
-        startedAt,
-
-        finishedAt:
-          Date.now(),
-
-        data: {
-
-          item:
-            params.item,
-
-          error:
-            "ITEM_NOT_FOUND"
-        }
-      };
-    }
-
-
-    // =================================================
-    // 2. 是否有 Crafting Knowledge
-    // =================================================
-
-    if (
-      !hasCraftingKnowledge(
-        params.item
-      )
-    ) {
-
-      return {
-
-        skill:
-          this.name,
-
-        status:
-          "FAILED",
-
-        reason:
-          "INVALID_ARGUMENT",
-
-        startedAt,
-
-        finishedAt:
-          Date.now(),
-
-        data: {
-
-          item:
-            params.item,
-
-          error:
-            "CRAFTING_KNOWLEDGE_NOT_FOUND"
-        }
-      };
-    }
-
-
     const recipe =
       getCraftRecipe(
         params.item
-      )!;
+      );
+
+
+    if (!recipe) {
+
+      return {
+
+        skill:
+          this.name,
+
+        status:
+          "FAILED",
+
+        reason:
+          "INVALID_ARGUMENT",
+
+        startedAt,
+
+        finishedAt:
+          Date.now(),
+
+        data: {
+
+          item:
+            params.item,
+
+          error:
+            "NO_CRAFTING_KNOWLEDGE"
+        }
+      };
+    }
 
 
     // =================================================
-    // 3. 计算实际需要执行多少次 Recipe
-    //
-    // 比如：
-    //
-    // stick 每次产出4个
-    //
-    // 请求5个
-    // → 需要合成2次
-    // → 实际产出8个
+    // Craft 次数
     // =================================================
 
     const craftOperations =
@@ -178,7 +145,7 @@ export class CheckCraftRequirementSkill
 
 
     // =================================================
-    // 4. 检查所有材料
+    // Ingredients
     // =================================================
 
     const ingredients =
@@ -190,31 +157,78 @@ export class CheckCraftRequirementSkill
             craftOperations;
 
 
+          // =============================================
+          // 精确 Item
+          // =============================================
+
+          if (
+            ingredient.kind ===
+            "item"
+          ) {
+
+            const available =
+              this.countItem(
+                ctx,
+                ingredient.item
+              );
+
+
+            return {
+
+              kind:
+                "item",
+
+              item:
+                ingredient.item,
+
+              required,
+
+              available,
+
+              missing:
+                Math.max(
+                  0,
+                  required -
+                  available
+                )
+            };
+          }
+
+
+          // =============================================
+          // Resource Group
+          // =============================================
+
           const available =
-            this.countItem(
-              bot,
-              ingredient.item
-            );
-
-
-          const missing =
-            Math.max(
-              0,
-              required -
-              available
+            this.countGroup(
+              ctx,
+              ingredient.group
             );
 
 
           return {
 
-            item:
-              ingredient.item,
+            kind:
+              "group",
+
+            group:
+              ingredient.group,
+
+            members:
+              getResourceGroupMembers(
+                ingredient.group
+              ),
 
             required,
 
             available,
 
-            missing
+            missing:
+              Math.max(
+                0,
+                required -
+                available
+              )
           };
         }
       );
@@ -223,12 +237,13 @@ export class CheckCraftRequirementSkill
     const missingMaterials =
       ingredients.filter(
         ingredient =>
-          ingredient.missing > 0
+          ingredient.missing >
+          0
       );
 
 
     // =================================================
-    // 5. Crafting Table
+    // Crafting Table
     // =================================================
 
     let craftingTableFound =
@@ -240,7 +255,8 @@ export class CheckCraftRequirementSkill
         x: number;
         y: number;
         z: number;
-      } | null = null;
+      } | null =
+      null;
 
 
     if (
@@ -259,17 +275,6 @@ export class CheckCraftRequirementSkill
 
       if (tableInfo) {
 
-        const radius =
-          Math.max(
-            1,
-            Math.min(
-              params.craftingTableRadius ??
-                16,
-              64
-            )
-          );
-
-
         const table =
           bot.findBlock({
 
@@ -277,7 +282,9 @@ export class CheckCraftRequirementSkill
               tableInfo.id,
 
             maxDistance:
-              radius
+              params
+                .craftingTableRadius ??
+              16
           });
 
 
@@ -303,10 +310,6 @@ export class CheckCraftRequirementSkill
     }
 
 
-    // =================================================
-    // 6. 当前是否已经能直接 Craft
-    // =================================================
-
     const materialsReady =
       missingMaterials.length ===
       0;
@@ -316,18 +319,6 @@ export class CheckCraftRequirementSkill
       !recipe.requiresCraftingTable ||
       craftingTableFound;
 
-
-    const canCraftNow =
-      materialsReady &&
-      tableReady;
-
-
-    // =================================================
-    // 7. QUERY SUCCESS
-    //
-    // canCraftNow=false 不是错误。
-    // 它只是查询出来当前条件不足。
-    // =================================================
 
     return {
 
@@ -368,7 +359,9 @@ export class CheckCraftRequirementSkill
 
         tableReady,
 
-        canCraftNow,
+        canCraftNow:
+          materialsReady &&
+          tableReady,
 
         ingredients,
 
@@ -379,20 +372,64 @@ export class CheckCraftRequirementSkill
 
 
   // ===================================================
-  // Inventory Count
+  // Exact Item Count
   // ===================================================
 
   private countItem(
-    bot: SkillContext["bot"],
+    ctx: SkillContext,
     itemName: string
   ): number {
 
-    return bot.inventory
+    return ctx.bot.inventory
       .items()
       .filter(
         item =>
           item.name ===
           itemName
+      )
+      .reduce(
+        (
+          total,
+          item
+        ) =>
+          total +
+          item.count,
+        0
+      );
+  }
+
+
+  // ===================================================
+  // Group Count
+  //
+  // 例如：
+  //
+  // birch_planks = 2
+  // spruce_planks = 3
+  //
+  // ANY_PLANK = 5
+  // ===================================================
+
+  private countGroup(
+    ctx: SkillContext,
+    group:
+      "ANY_LOG" |
+      "ANY_PLANK"
+  ): number {
+
+    const members =
+      getResourceGroupMembers(
+        group
+      );
+
+
+    return ctx.bot.inventory
+      .items()
+      .filter(
+        item =>
+          members.includes(
+            item.name as never
+          )
       )
       .reduce(
         (

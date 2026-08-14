@@ -24,6 +24,7 @@ export type SkillFailureReason =
   | "CRAFTING_TABLE_NOT_FOUND"
   | "RECIPE_NOT_AVAILABLE"
   | "CRAFT_FAILED"
+  | "PRECONDITION_MISSING"
   | "NO_PROGRESS"
   | "CANCELLED"
   | "TIMEOUT"

@@ -1,10 +1,51 @@
-export interface CraftIngredient {
-  item: string;
-  count: number;
-}
+import type {
+  ResourceGroupName
+} from "./ResourceGroups";
 
+import {
+  LOG_TO_PLANK
+} from "./ResourceGroups";
+
+
+// =====================================================
+// Ingredient
+//
+// 现在有两种前置条件：
+//
+// 1. 精确 Item
+//
+//    cobblestone ×3
+//
+// 2. Resource Group
+//
+//    ANY_PLANK ×3
+// =====================================================
+
+export type CraftIngredient =
+
+  | {
+      kind: "item";
+
+      item: string;
+
+      count: number;
+    }
+
+  | {
+      kind: "group";
+
+      group: ResourceGroupName;
+
+      count: number;
+    };
+
+
+// =====================================================
+// Recipe Knowledge
+// =====================================================
 
 export interface CraftRecipeKnowledge {
+
   item: string;
 
   outputCount: number;
@@ -16,26 +57,40 @@ export interface CraftRecipeKnowledge {
 
 
 // =====================================================
-// 第一版 Crafting Knowledge
+// 自动生成：
 //
-// 先只加入我们后面制造石镐真正需要的链。
-// 不一次加入整个 Minecraft 配方表。
+// oak_log -> oak_planks
+// birch_log -> birch_planks
+// spruce_log -> spruce_planks
+// ...
+//
+// 这样不用手写十几遍。
 // =====================================================
 
-const CRAFTING_KNOWLEDGE:
-  Record<string, CraftRecipeKnowledge> = {
+const WOOD_PLANK_RECIPES:
+  Record<
+    string,
+    CraftRecipeKnowledge
+  > =
+  {};
 
 
-  // ===================================================
-  // Oak Planks
-  //
-  // 1 oak_log -> 4 oak_planks
-  // ===================================================
+for (
+  const [
+    log,
+    plank
+  ]
+  of Object.entries(
+    LOG_TO_PLANK
+  )
+) {
 
-  oak_planks: {
+  WOOD_PLANK_RECIPES[
+    plank
+  ] = {
 
     item:
-      "oak_planks",
+      plank,
 
     outputCount:
       4,
@@ -46,20 +101,39 @@ const CRAFTING_KNOWLEDGE:
     ingredients: [
 
       {
+        kind:
+          "item",
+
         item:
-          "oak_log",
+          log,
 
         count:
           1
       }
     ]
-  },
+  };
+}
+
+
+// =====================================================
+// Main Knowledge
+// =====================================================
+
+const CRAFTING_KNOWLEDGE:
+  Record<
+    string,
+    CraftRecipeKnowledge
+  > = {
+
+  ...WOOD_PLANK_RECIPES,
 
 
   // ===================================================
   // Stick
   //
-  // 2 oak_planks -> 4 stick
+  // 不再要求 oak_planks。
+  //
+  // 任意木板都可以。
   // ===================================================
 
   stick: {
@@ -76,8 +150,11 @@ const CRAFTING_KNOWLEDGE:
     ingredients: [
 
       {
-        item:
-          "oak_planks",
+        kind:
+          "group",
+
+        group:
+          "ANY_PLANK",
 
         count:
           2
@@ -89,7 +166,7 @@ const CRAFTING_KNOWLEDGE:
   // ===================================================
   // Crafting Table
   //
-  // 4 oak_planks -> 1 crafting_table
+  // 任意木板。
   // ===================================================
 
   crafting_table: {
@@ -106,8 +183,11 @@ const CRAFTING_KNOWLEDGE:
     ingredients: [
 
       {
-        item:
-          "oak_planks",
+        kind:
+          "group",
+
+        group:
+          "ANY_PLANK",
 
         count:
           4
@@ -117,9 +197,51 @@ const CRAFTING_KNOWLEDGE:
 
 
   // ===================================================
-  // Stone Pickaxe
+  // Wooden Pickaxe
   //
-  // 3 cobblestone + 2 stick
+  // 任意木板 + stick
+  // ===================================================
+
+  wooden_pickaxe: {
+
+    item:
+      "wooden_pickaxe",
+
+    outputCount:
+      1,
+
+    requiresCraftingTable:
+      true,
+
+    ingredients: [
+
+      {
+        kind:
+          "group",
+
+        group:
+          "ANY_PLANK",
+
+        count:
+          3
+      },
+
+      {
+        kind:
+          "item",
+
+        item:
+          "stick",
+
+        count:
+          2
+      }
+    ]
+  },
+
+
+  // ===================================================
+  // Stone Pickaxe
   // ===================================================
 
   stone_pickaxe: {
@@ -136,6 +258,9 @@ const CRAFTING_KNOWLEDGE:
     ingredients: [
 
       {
+        kind:
+          "item",
+
         item:
           "cobblestone",
 
@@ -144,6 +269,9 @@ const CRAFTING_KNOWLEDGE:
       },
 
       {
+        kind:
+          "item",
+
         item:
           "stick",
 
@@ -164,22 +292,23 @@ export function getCraftRecipe(
 ): CraftRecipeKnowledge | null {
 
   return (
-    CRAFTING_KNOWLEDGE[item] ??
+    CRAFTING_KNOWLEDGE[
+      item
+    ] ??
     null
   );
 }
 
 
 // =====================================================
-// Knowledge Exists
+// Has Knowledge
 // =====================================================
 
 export function hasCraftingKnowledge(
   item: string
 ): boolean {
 
-  return (
-    CRAFTING_KNOWLEDGE[item] !==
-    undefined
+  return !!getCraftRecipe(
+    item
   );
 }

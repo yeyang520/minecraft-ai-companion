@@ -15,7 +15,6 @@ export class GameObserver {
     // ==========================================
     if (
       !bot ||
-      !this.botManager.isReady() ||
       !bot.entity ||
       !bot.inventory
     ) {
@@ -35,7 +34,7 @@ export class GameObserver {
           isFull: false
         },
         currentSkill:
-          this.skillManager.getCurrentSkill()
+          this.getCurrentSkill()
       };
     }
 

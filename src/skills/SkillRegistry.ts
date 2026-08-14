@@ -9,6 +9,7 @@ import {CollectItemSkill} from "./resource/CollectItemSkill";
 import {CheckHarvestToolSkill} from "./perception/CheckHarvestToolSkill";
 import {CheckCraftRequirementSkill} from "./perception/CheckCraftRequirementSkill";
 import {CraftItemSkill} from "./resource/CraftItemSkill";
+import {EnsureItemSkill} from "./resource/EnsureItemSkill";
 
 export class SkillRegistry {
   private readonly skills = new Map<string, Skill<any>>();
@@ -25,6 +26,7 @@ export class SkillRegistry {
     this.register(new CheckHarvestToolSkill());
     this.register(new CheckCraftRequirementSkill());
     this.register(new CraftItemSkill());
+    this.register(new EnsureItemSkill());
   }
 
   // 注册skill
